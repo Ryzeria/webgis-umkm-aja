@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>WebGIS UMK</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <style>
+    #map {
+      height: 100vh;
+      width: 100vw;
+    }
+    .leaflet-control-layers-expanded {
+      max-height: 250px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- ✅ JavaScript harus di akhir body agar urut -->
+  <!-- 1. Leaflet Core -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- 2. GeoTIFF support -->
+  <script src="https://unpkg.com/geotiff"></script>
+  <script src="https://unpkg.com/georaster"></script>
+  <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
+
+  <!-- 3. Geocoder (opsional) -->
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+  <script>
+    const map = L.map('map');
+
+    // ✅ Basemaps
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© CartoDB, OSM contributors'
+    });
+
+    const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '© Esri'
+    });
+
+    const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenTopoMap, © OSM'
+    });
+
+    const baseLayers = {
+      "OpenStreetMap": osm,
+      "Carto Light": carto,
+      "Esri Imagery": esri,
+      "OpenTopoMap": topo
+    };
+
+    const overlays = {};
+    const controlLayers = L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
+
+    let globalBounds = L.latLngBounds();
+
+    // ✅ Fungsi untuk load GeoJSON
+    function loadLayer(url, name, color) {
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          const layer = L.geoJSON(data, {
+            style: {
+              color: color,
+              weight: 2,
+              fillOpacity: 0.4
+            },
+            onEachFeature: function (feature, layer) {
+              let popup = `<b>${name}</b><br>`;
+              if (feature.properties) {
+                for (const key in feature.properties) {
+                  popup += `<b>${key}:</b> ${feature.properties[key]}<br>`;
+                }
+              }
+              layer.bindPopup(popup);
+            }
+          });
+          layer.addTo(map);
+          overlays[name] = layer;
+          controlLayers.addOverlay(layer, name);
+          globalBounds.extend(layer.getBounds());
+          map.fitBounds(globalBounds, { padding: [20, 20] });
+        });
+    }
+
+    // ✅ Load semua GeoJSON
+    loadLayer('src/BlokA.json', 'Blok A', '#e41a1c');
+    loadLayer('src/BlokB.json', 'Blok B', '#377eb8');
+    loadLayer('src/BlokC.json', 'Blok C', '#4daf4a');
+    loadLayer('src/BlokD.json', 'Blok D', '#984ea3');
+    loadLayer('src/Fasilitasumum.json', 'Fasilitas Umum', '#ff7f00');
+
+    // ✅ Load dan tampilkan GeoTIFF (foto udara)
+    fetch('src/fotoudara.tif')
+      .then(response => response.arrayBuffer())
+      .then(buffer => parseGeoraster(buffer))
+      .then(georaster => {
+        const rasterLayer = new GeoRasterLayer({
+          georaster: georaster,
+          opacity: 0.7,
+          resolution: 256
+        });
+
+        rasterLayer.addTo(map);
+        overlays["Foto Udara"] = rasterLayer;
+        controlLayers.addOverlay(rasterLayer, "Foto Udara");
+
+        // Tambah ke bounds peta
+        globalBounds.extend(rasterLayer.getBounds());
+        map.fitBounds(globalBounds, { padding: [20, 20] });
+      })
+      .catch(error => console.error("Gagal memuat GeoTIFF:", error));
+
+    // ✅ Search bar
+    L.Control.geocoder().addTo(map);
+  </script>
+</body>
+</html>
